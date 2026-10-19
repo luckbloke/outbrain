@@ -1,0 +1,48 @@
+外脑 · Cordis Brain — Windows 桌面客户端
+========================================
+
+【启动】
+  双击  dist\cordis-desktop\cordis-desktop.exe
+  或    双击本目录的  启动外脑.bat
+（首次启动稍慢，属正常；窗口内嵌 Chromium 加载你的外脑网页界面。）
+
+【前提：先有外脑服务在跑】
+  · 本机服务：   python server.py                  （127.0.0.1:8787）
+  · 或别的机器： 同一套服务跑在局域网/服务器上      （http://<服务器IP>:8787）
+  本客户端只负责打开界面，不内置服务。
+
+【连哪台服务器】
+  默认打开 http://127.0.0.1:8787（本机服务）。
+  要连别的机器（例如 http://192.168.1.10:8787）：
+    · 程序内：菜单「外脑 → 设置服务器地址…」填地址
+      （会记住到本目录 desktop_url.txt，下次自动用这个地址）
+    · 或命令行：cordis-desktop.exe --url=http://192.168.1.10:8787
+
+【登录 / 数据】
+  登录 Cookie 存于  %LOCALAPPDATA%\cordis-desktop  ，登录一次后下次免登。
+
+【菜单】
+  外脑 → 刷新 / 设置服务器地址… / 退出
+  （也可直接点窗口右上角 × 关闭。）
+
+【开发者工具】
+  设环境变量 CORDIS_DESKTOP_DEBUG=1 再启动，然后按 F12。
+
+【界面：跟随窗口宽度自适应】
+  默认窗口 1280×860，最小 920×600。
+  内容铺满窗口宽度（左右留白随宽度在 12–36px 之间），今日分区 / 捕获页 / 数据页
+  会按可用宽度自动分栏（1→2→3→4… 列）；手机上仍是单列，布局不变。
+
+【图标】
+  窗口/任务栏图标取自程序内的 cordis.ico；想换图标就把同名的 cordis.ico 放到
+  cordis-desktop.exe 旁边（优先使用），或替换 desktop\cordis.ico 后重新打包。
+
+【重新打包】
+  cd desktop
+  python -m PyInstaller --noconfirm cordis-desktop.spec
+  产物：dist\cordis-desktop\cordis-desktop.exe
+
+【拷到别的 Windows 电脑】
+  把整个  dist\cordis-desktop  文件夹拷过去即可，双击里面的 cordis-desktop.exe。
+  已自包含（内嵌 Python + Qt WebEngine/Chromium），无需另装任何东西；整个文件夹约 591MB。
+  渲染后端优先用自带的 Chromium（最稳）；若机器无 Qt 则自动回退系统 WebView2(Edge)。

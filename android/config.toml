@@ -1,0 +1,44 @@
+# 外脑 · Cordis Brain —— Android 端配置
+#
+# 该文件随 APK 打进应用私有目录（/data/data/<包名>/files/app/config.toml）。
+# 应用内「设置」面板保存时会覆盖写回这个文件（仅管理员：首个注册用户）。
+#
+# 想接内网大模型：把 ai.provider 改成 openai，并在应用内「设置」里填
+# base_url / api_key / model / embed_model；保存后热生效，无需重启 App。
+
+[server]
+host = "127.0.0.1"
+port = 8787            # 必须与 buildozer.spec 的 p4a.port 一致
+data_dir = "data"      # 相对应用私有目录
+web_dir = "web"
+
+[time]
+timezone = "Asia/Shanghai"
+
+[db]
+path = ""              # 留空 → data/brain.db
+
+[search]
+use_fts5 = "auto"      # auto = 内核 sqlite 支持 FTS5 则用（p4a 内置 sqlite 已开 FTS5）
+semantic = "auto"      # auto = 有 embedding 模型才做向量融合
+
+[capture]
+provider = "auto"      # auto = 优先 LLM，失败自动回退 heuristic
+
+[ai]
+# 默认离线 heuristic：不联网、零依赖、即开即用。
+provider = "heuristic"   # heuristic | openai | ollama
+
+[ai.openai]
+base_url = ""
+api_key = ""
+model = ""
+embed_model = ""
+
+[ai.ollama]
+base_url = "http://127.0.0.1:11434"
+model = "qwen2.5:7b"
+embed_model = "bge-m3"
+
+[reminders]
+poll_interval = 20

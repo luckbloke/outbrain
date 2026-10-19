@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<meta name="color-scheme" content="dark light">
+<meta name="format-detection" content="telephone=no">
+<title>外脑 · Cordis Brain</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- ============================ 顶栏 ============================ -->
+<header class="appbar">
+  <div class="brand">
+    <div class="mark">🧠</div>
+    <div>
+      <div>外脑</div>
+      <div class="sub">CORDIS BRAIN</div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <span class="status-dot" id="chipHealth" title="服务状态"><i></i><span>连接中</span></span>
+  <button class="iconbtn" id="chipBell" title="通知与提醒" aria-label="通知与提醒">
+    🔔<span class="badge-dot" id="bellCount" style="display:none">0</span>
+  </button>
+  <button class="iconbtn" id="btnTheme" title="切换深浅色" aria-label="切换深浅色">🌙</button>
+  <button class="iconbtn" id="btnSettings" title="设置" aria-label="设置" style="display:none">⚙️</button>
+  <button class="iconbtn" id="btnLogout" title="登出" aria-label="登出" style="display:none">⏏</button>
+</header>
+
+<!-- ============================ 桌面导航 ============================ -->
+<nav class="navbar" id="navbar">
+  <button class="tab active" data-tab="today"><span class="ic">☀️</span>今日</button>
+  <button class="tab" data-tab="capture"><span class="ic">✍️</span>捕获</button>
+  <button class="tab" data-tab="search"><span class="ic">🔍</span>搜索</button>
+  <button class="tab" data-tab="ask"><span class="ic">💬</span>问答</button>
+  <button class="tab" data-tab="review"><span class="ic">📊</span>复盘</button>
+  <button class="tab" data-tab="graph"><span class="ic">🕸️</span>图谱</button>
+  <button class="tab" data-tab="suggest"><span class="ic">💡</span>建议</button>
+  <button class="tab" data-tab="data"><span class="ic">🗄️</span>数据</button>
+</nav>
+
+<div id="alertBanner"></div>
+
+<!-- ============================ 主体 ============================ -->
+<main class="wrap">
+
+  <!-- ---------------------------- 今日 ---------------------------- -->
+  <section class="view active" id="view-today">
+    <div class="hero" id="todayHero">
+      <div class="hello" id="helloLine">今天</div>
+      <div class="headline" id="headline">正在加载…</div>
+      <div class="stats" id="todayStats"></div>
+    </div>
+
+    <div class="quick">
+      <input id="quickInput" type="text" placeholder="随手记一笔，自动整理时间/标签…" autocomplete="off">
+      <button class="btn primary" id="quickBtn">记下</button>
+    </div>
+
+    <div id="todayBody">
+      <div class="card"><div class="skeleton" style="width:45%"></div><div class="skeleton"></div><div class="skeleton" style="width:70%"></div></div>
+    </div>
+  </section>
+
+  <!-- ---------------------------- 捕获 ---------------------------- -->
+  <section class="view" id="view-capture">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>快速捕获</h2>
+          <div class="hint">一句话即可，系统自动识别类型、时间、标签、项目与优先级。</div>
+        </div>
+      </div>
+      <textarea id="capText" placeholder="例如：明天下午3点和张总开会，准备项目预算方案"></textarea>
+      <div class="row" style="margin-top:10px">
+        <select id="capSource" style="max-width:132px">
+          <option value="text">文字</option>
+          <option value="voice">语音</option>
+          <option value="web">网页</option>
+          <option value="file">文件</option>
+        </select>
+        <button class="btn primary" id="capBtn">捕获</button>
+        <button class="btn ghost" id="capMic" title="语音输入">🎤 语音</button>
+        <button class="btn ghost" id="capFile" title="上传文件">📎 文件</button>
+        <input type="file" id="capFileInput" style="display:none" accept=".txt,.md,.csv,.json,.pdf,.docx,.html,.htm,.log">
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="rec-pill" id="recPill"><i></i><span id="recText">录音中…</span></span>
+        <span class="faint" id="capHint">Ctrl / ⌘ + Enter 快速提交</span>
+      </div>
+      <div id="capResult"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>进行中</h2><div class="hint">未完成与等待中的记录</div></div>
+        <div class="spacer"></div>
+        <button class="btn ghost sm" id="recentRefresh">刷新</button>
+      </div>
+      <div id="recentList"></div>
+    </div>
+  </section>
+
+  <!-- ---------------------------- 搜索 ---------------------------- -->
+  <section class="view" id="view-search">
+    <div class="card">
+      <div class="card-head"><div><h2>混合搜索</h2><div class="hint">关键词 + 语义，结果按相关度排序。</div></div></div>
+      <div class="row">
+        <input class="grow" id="searchQ" type="search" placeholder="如：张总 预算" autocomplete="off">
+        <select id="searchType" style="max-width:126px">
+          <option value="">全部类型</option>
+          <option value="task">任务</option>
+          <option value="event">日程</option>
+          <option value="idea">灵感</option>
+          <option value="note">笔记</option>
+          <option value="reference">资料</option>
+        </select>
+        <button class="btn primary" id="searchBtn">搜索</button>
+      </div>
+    </div>
+    <div class="card"><div id="searchResults"><div class="empty"><span class="big">🔍</span>输入关键词开始搜索</div></div></div>
+  </section>
+
+  <!-- ---------------------------- 问答 ---------------------------- -->
+  <section class="view" id="view-ask">
+    <div class="card">
+      <div class="card-head"><div><h2>自然语言问答</h2><div class="hint">基于你的记录作答，并给出引用来源。</div></div></div>
+      <div class="row">
+        <input class="grow" id="askQ" type="search" placeholder="如：上周和张总聊了什么？还有哪些待办？" autocomplete="off">
+        <button class="btn primary" id="askBtn">提问</button>
+      </div>
+    </div>
+    <div class="card"><div id="askResults"><div class="empty"><span class="big">💬</span>问点什么吧</div></div></div>
+  </section>
+
+  <!-- ---------------------------- 复盘 ---------------------------- -->
+  <section class="view" id="view-review">
+    <div class="card">
+      <div class="card-head"><div><h2>复盘</h2><div class="hint">完成 / 遗漏 / 下一步，模板总结始终可用。</div></div></div>
+      <div class="row">
+        <input type="date" id="reviewDate" style="max-width:168px">
+        <button class="btn primary" id="reviewDailyBtn">今日复盘</button>
+        <button class="btn ghost" id="reviewWeekBtn">本周复盘</button>
+        <button class="btn ghost" id="reviewPolishBtn" title="用 LLM 润色（需几秒）">🤖 AI 润色</button>
+      </div>
+      <div id="reviewOut"></div>
+    </div>
+  </section>
+
+  <!-- ---------------------------- 图谱 ---------------------------- -->
+  <section class="view" id="view-graph">
+    <div class="card">
+      <div class="card-head"><div><h2>实体图谱</h2><div class="hint">从记录中抽取人物、项目、事件与概念。</div></div>
+        <div class="spacer"></div><button class="btn ghost sm" id="graphRefresh">刷新</button></div>
+      <div id="graphOut"></div>
+    </div>
+  </section>
+
+  <!-- ---------------------------- 建议 ---------------------------- -->
+  <section class="view" id="view-suggest">
+    <div class="card">
+      <div class="card-head"><div><h2>主动建议</h2><div class="hint">逾期、长期无进展、重复、重要未排期，一键处理。</div></div>
+        <div class="spacer"></div><button class="btn ghost sm" id="sugRefresh">刷新</button></div>
+      <div id="sugOut"></div>
+    </div>
+  </section>
+
+  <!-- ---------------------------- 数据 ---------------------------- -->
+  <section class="view" id="view-data">
+    <div class="card">
+      <div class="card-head"><div><h2>备份与迁移</h2>
+        <div class="hint">JSON 导入导出为个人数据；整库快照仅管理员可用。</div></div></div>
+      <div class="row">
+        <button class="btn" id="btnBackup">创建备份</button>
+        <button class="btn ghost" id="btnExport">导出 JSON</button>
+        <button class="btn ghost" id="btnImport">导入 JSON</button>
+        <input type="file" id="impFile" style="display:none" accept=".json">
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h2>备份列表</h2></div></div>
+      <div id="backupList"></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============================ 手机底部导航 ============================ -->
+<nav class="tabbar" id="tabbar">
+  <button class="tb active" data-tab="today"><span class="ic">☀️</span>今日</button>
+  <button class="tb" data-tab="capture"><span class="ic">✍️</span>捕获</button>
+  <button class="tb" data-tab="search"><span class="ic">🔍</span>搜索</button>
+  <button class="tb" data-tab="review"><span class="ic">📊</span>复盘</button>
+  <button class="tb" data-tab="more"><span class="ic">⋯</span>更多</button>
+</nav>
+
+<!-- ============================ 弹层 ============================ -->
+<div class="popover" id="notifPanel"></div>
+
+<div class="sheet-mask" id="sheetMask">
+  <div class="sheet" id="sheet">
+    <div class="sheet-head">
+      <h2 id="sheetTitle">标题</h2>
+      <div class="spacer"></div>
+      <button class="iconbtn" id="sheetClose" aria-label="关闭">✕</button>
+    </div>
+    <div id="sheetBody"></div>
+    <div class="sheet-foot" id="sheetFoot"></div>
+  </div>
+</div>
+
+<div class="sheet-mask" id="settingsMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>⚙️ 设置</h2>
+      <div class="spacer"></div>
+      <button class="iconbtn" id="settingsClose" aria-label="关闭">✕</button>
+    </div>
+    <div class="faint" id="settingsPath"></div>
+    <div id="settingsFields" style="margin-top:12px"></div>
+    <div class="sheet-foot">
+      <button class="btn primary" id="saveSettingsBtn">保存</button>
+      <button class="btn ghost" id="settingsCancel">取消</button>
+    </div>
+    <div class="faint" id="settingsMsg" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ============================ 登录 ============================ -->
+<div id="authScreen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="mark">🧠</div>
+      <h1>外脑 · Cordis Brain</h1>
+      <p>你的第二大脑：随手记，自动整理。</p>
+    </div>
+    <div class="segmented" id="authTabs">
+      <button class="active" data-mode="login">登录</button>
+      <button data-mode="register">注册</button>
+    </div>
+    <div id="authMsg" class="error-box" style="display:none;margin-bottom:12px"></div>
+    <form id="authForm" autocomplete="on">
+      <div class="field">
+        <label for="authUser">用户名</label>
+        <input id="authUser" type="text" autocomplete="username" placeholder="至少 2 个字符">
+      </div>
+      <div class="field">
+        <label for="authPass">密码</label>
+        <input id="authPass" type="password" autocomplete="current-password" placeholder="至少 6 位">
+      </div>
+      <button class="btn primary block" id="authSubmit" type="submit">登录</button>
+    </form>
+    <div class="faint" style="text-align:center;margin-top:12px" id="authTip">首个注册的用户为管理员</div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

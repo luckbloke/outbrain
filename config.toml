@@ -1,0 +1,52 @@
+# Cordis 外脑 · 配置（本地优先，内网可用）
+# 零依赖即可运行；可选依赖（jieba/requests）装上自动增强。
+
+[server]
+host = "0.0.0.0"
+port = 8787
+data_dir = "data"
+web_dir = "web"
+# 可选 HTTPS（供安卓 WebView / 手机安全上下文用）。证书文件不存在、或环境无 _ssl 时自动跳过。
+# 注意：远程(RHEL)那台无 _ssl，且这里证书路径是本地 Windows 路径 → 远程会自动跳过，不影响。
+https_port = 8443
+tls_cert = "D:/outbrain/worktable/data/tls/cert.pem"
+tls_key = "D:/outbrain/worktable/data/tls/key.pem"
+
+[time]
+timezone = "Asia/Shanghai"
+
+[db]
+# 留空则用 data/brain.db
+path = ""
+
+[search]
+# FTS5 检索：auto=sqlite 支持则用(默认)；on=要求启用(不支持则降级LIKE)；off=禁用(仅LIKE关键词)
+use_fts5 = "auto"
+# 语义搜索：auto=有可用 embedding 模型就用向量+关键词融合(默认)；off=仅关键词。
+# 需先在 LLM 网关配一个真正的 embedding 模型并把 [ai.openai] embed_model 指向它，auto 才真正生效。
+semantic = "auto"
+
+[capture]
+# 捕获解析：auto=优先用 LLM 智能解析，LLM 不可用/超时自动回退 heuristic(默认)；heuristic=纯规则(最快离线)
+provider = "auto"
+
+# AI 网关：provider = heuristic | openai | ollama
+# heuristic：离线纯规则（默认，内网零依赖）
+# openai：  任意 OpenAI 兼容端点（含内网代理）
+# ollama：  本地 Ollama（http://127.0.0.1:11434）
+[ai]
+provider = "heuristic"    # heuristic | openai | ollama
+
+[ai.openai]
+base_url = "https://api.openai.com/v1"
+api_key = ""            # 或用环境变量 OPENAI_API_KEY（BYOK）
+model = "gpt-4o-mini"
+embed_model = "text-embedding-3-small"               # 语义向量模型（问答用 model，检索向量用 embed_model）
+
+[ai.ollama]
+base_url = "http://127.0.0.1:11434"
+model = "qwen2.5:7b"
+embed_model = "bge-m3"
+
+[reminders]
+poll_interval = 20
