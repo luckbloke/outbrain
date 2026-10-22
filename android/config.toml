@@ -1,0 +1,61 @@
+# 外脑 · Cordis Brain —— Android 端配置
+#
+# 该文件随 APK 打进应用私有目录（/data/data/<包名>/files/app/config.toml）。
+# 应用内「设置」面板保存时会覆盖写回这个文件（仅管理员：首个注册用户）。
+#
+# 默认已接入 Kilo 免费网关，无需 API Key；想换模型或接内网大模型，在应用内「设置」里改
+# base_url / api_key / model / embed_model；保存后热生效，无需重启 App。
+
+[server]
+host = "127.0.0.1"
+port = 8787            # 必须与 buildozer.spec 的 p4a.port 一致
+data_dir = "data"      # 相对应用私有目录
+web_dir = "web"
+
+[time]
+timezone = "Asia/Shanghai"
+
+[db]
+path = ""              # 留空 → data/brain.db
+
+[search]
+use_fts5 = "auto"      # auto = 内核 sqlite 支持 FTS5 则用（p4a 内置 sqlite 已开 FTS5）
+semantic = "auto"      # auto = 有 embedding 模型才做向量融合
+
+[capture]
+provider = "auto"      # auto = 优先 LLM，失败自动回退 heuristic
+
+[asr]
+# 语音转写：auto=先用下面的 OpenAI 兼容接口，失败/未配置用本机 whisper / vosk；
+# 都没有时音频存到 data/uploads/ 并标记「待转写」。可强制 openai | whisper | vosk | off。
+provider = "auto"
+base_url = ""          # 如 https://api.openai.com/v1 或自建 faster-whisper 网关；留空=不启用远程
+api_key = ""           # 留空：与 [ai.openai] 同源时自动复用其 Key
+model = "whisper-1"
+language = ""          # 留空自动识别；中文可填 zh
+timeout = 60
+vosk_model = ""        # 本机 vosk 模型目录（仅 wav 音频）
+
+[habits]
+# 常记项目自动关联：auto=先按学到的「标签→项目」，没有再按你最常记的项目；tags / off
+auto_project = "auto"
+# 建议排序加权：auto=按常记项目/标签加权；off=只按紧迫度
+suggest_boost = "auto"
+
+[ai]
+# 默认接入 Kilo 免费网关：开箱即用，无需 API Key。
+provider = "openai"      # heuristic | openai | ollama
+
+[ai.openai]
+base_url = "https://api.kilo.ai/api/gateway"
+api_key = ""
+model = "kilo-auto/free"
+embed_model = ""
+
+[ai.ollama]
+base_url = "http://127.0.0.1:11434"
+model = "qwen2.5:7b"
+embed_model = "bge-m3"
+
+[reminders]
+poll_interval = 20

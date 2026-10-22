@@ -1,0 +1,16 @@
+# Cordis 外脑 · 依赖（全部「可选 + 自动降级」，内网 pip 源可装）
+#
+# 零依赖即可运行：核心只用 Python 标准库（sqlite3 + FTS5、http.server、zoneinfo、tomllib）。
+# 下面这些装上会自动增强，没装也能跑（自动降级，不报错）。
+#
+# === 轻量增强（推荐安装）===
+jieba        # 中文分词：检索从「字符 2-gram」升级为「词级分词」，召回更准
+requests     # 更稳的 HTTP 客户端：LLM/OpenAI 调用用它，没装回退 urllib
+#
+# === 文件 / 语音解析（P2，按需安装；缺则给提示、不崩）===
+# pypdf             # PDF 文本提取
+# python-docx       # Word(.docx) 文本提取
+# openai-whisper    # 语音转写（较重；轻量替代：vosk）
+#
+# 刻意不引入：FastAPI/uvicorn、sqlite-vec、chromadb 等重依赖或编译扩展，
+# 以保证「零依赖也能跑」这条底线（内网稳定）。

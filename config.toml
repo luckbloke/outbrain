@@ -1,0 +1,75 @@
+# Cordis 外脑 · 配置（本地优先，内网可用）
+# 零依赖即可运行；可选依赖（jieba/requests）装上自动增强。
+
+[server]
+host = "0.0.0.0"
+port = 8787
+data_dir = "data"
+web_dir = "web"
+# 可选 HTTPS（供安卓 WebView / 手机安全上下文用）。证书文件不存在、或环境无 _ssl 时自动跳过。
+# 注意：远程(RHEL)那台无 _ssl，且这里证书路径是本地 Windows 路径 → 远程会自动跳过，不影响。
+https_port = 8443
+tls_cert = "D:/outbrain/worktable/data/tls/cert.pem"
+tls_key = "D:/outbrain/worktable/data/tls/key.pem"
+
+[time]
+timezone = "Asia/Shanghai"
+
+[db]
+# 留空则用 data/brain.db
+path = ""
+
+[search]
+# FTS5 检索：auto=sqlite 支持则用(默认)；on=要求启用(不支持则降级LIKE)；off=禁用(仅LIKE关键词)
+use_fts5 = "auto"
+# 语义搜索：auto=有可用 embedding 模型就用向量+关键词融合(默认)；off=仅关键词。
+# 需先在 LLM 网关配一个真正的 embedding 模型并把 [ai.openai] embed_model 指向它，auto 才真正生效。
+semantic = "auto"
+
+[capture]
+# 记下 / 捕获的意图解析：auto=默认调 LLM（与问答同一套配置），LLM 不可用/超时自动回退规则；
+# heuristic=纯规则（最快、离线，不联网）。LLM 单次解析约 10~30s（免费网关）。
+provider = "auto"
+
+# 语音转写：auto=先用下面的 OpenAI 兼容接口，失败/未配置就用本机 whisper / vosk；
+# 都没有时音频存到 data/uploads/，条目上记「待转写」，不影响继续记东西。
+# provider 可强制：openai | whisper | vosk | off（off=关掉转写，只存音频）
+[asr]
+provider = "auto"
+base_url = ""          # 如 https://api.openai.com/v1 或自建 faster-whisper 网关；留空=不启用远程转写
+api_key = ""           # 留空：base_url 与 [ai.openai] 同源时自动复用其 Key
+model = "whisper-1"    # 自建网关填其模型名，如 Systran/faster-whisper-small
+language = ""          # 留空=自动识别；中文可填 zh
+timeout = 60           # 远程转写超时（秒）
+vosk_model = ""        # 本机 vosk 模型目录（vosk 只吃 wav，16k 单声道）
+
+# 习惯画像的两个「主动」用法（都要数据够多够集中才会生效，宁可不猜）
+[habits]
+# 常记项目自动关联：auto=先按学到的「标签→项目」，没有再按你最常记的项目；
+# tags=只用标签学习；off=关闭（只依赖文本里出现的项目名）
+auto_project = "auto"
+# 建议排序加权：auto=按常记项目/标签给建议里的条目加权；off=只按紧迫度
+suggest_boost = "auto"
+
+# AI 网关：问答 / 记下 / 捕获的意图解析共用这一套配置。
+# provider = heuristic | openai | ollama
+# heuristic：离线纯规则（内网零依赖）
+# openai：  任意 OpenAI 兼容端点（含内网代理）；默认已接入 Kilo 免费网关
+# ollama：  本地 Ollama（http://127.0.0.1:11434）
+[ai]
+provider = "openai"       # heuristic | openai | ollama
+
+[ai.openai]
+base_url = "https://api.kilo.ai/api/gateway"
+api_key = ""            # 免费模型可留空；换其他网关时填自己的 Key
+                        # 环境变量 OPENAI_API_KEY 只在 base_url 指向 api.openai.com 时生效
+model = "kilo-auto/free"
+embed_model = ""                                     # 语义向量模型（问答用 model，检索向量用 embed_model；Kilo 网关无 embedding，留空）
+
+[ai.ollama]
+base_url = "http://127.0.0.1:11434"
+model = "qwen2.5:7b"
+embed_model = "bge-m3"
+
+[reminders]
+poll_interval = 20
