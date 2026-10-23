@@ -242,7 +242,8 @@ class IOService(Service):
         if cfg["api_key"]:
             headers["Authorization"] = f"Bearer {cfg['api_key']}"
         req = urllib.request.Request(url, data=body, method="POST", headers=headers)
-        with urllib.request.urlopen(req, timeout=cfg["timeout"]) as resp:
+        from . import tls
+        with tls.urlopen(req, timeout=cfg["timeout"]) as resp:   # 带上随包 CA（Android 没有系统 CA）
             raw = resp.read()
         text = raw.decode("utf-8", "replace").strip()
         if not text:

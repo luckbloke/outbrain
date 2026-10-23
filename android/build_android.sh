@@ -793,6 +793,25 @@ cp    "$HERE/config.toml"    "$WORK/app/config.toml"
 cp -r "$SRC/brain"           "$WORK/app/brain"
 cp -r "$SRC/cordis"          "$WORK/app/cordis"
 cp -r "$SRC/web"             "$WORK/app/web"
+# Android 的 Python 没有系统 CA 库：必须把 Mozilla CA 包随包带上，
+# 否则访问 https 网关会 CERTIFICATE_VERIFY_FAILED（见 brain/tls.py）
+cp -r "$SRC/certs"           "$WORK/app/certs"
+
+# 再把同一份 CA 编进 brain/ca_data.py（zlib+base64）做兜底：
+# p4a 只按 source.include_exts 收文件，数据文件万一被过滤，.pyc 里还有一份
+python3 - "$SRC/certs/cacert.pem" "$WORK/app/brain/ca_data.py" <<'PY'
+import base64
+import sys
+import zlib
+
+src, dst = sys.argv[1], sys.argv[2]
+pem = open(src, "rb").read()
+data = base64.b64encode(zlib.compress(pem, 9)).decode()
+with open(dst, "w", encoding="utf-8", newline="\n") as f:
+    f.write('"""构建时自动生成：随包 CA 兜底（zlib+base64）。不要手改。"""\n')
+    f.write('DATA = "%s"\n' % data)
+print("  ca_data.py: %d -> %d bytes" % (len(pem), len(data)))
+PY
 cp    "$HERE/buildozer.spec" "$WORK/buildozer.spec"
 
 find "$WORK/app" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true

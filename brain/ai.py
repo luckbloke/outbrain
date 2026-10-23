@@ -11,6 +11,7 @@ provider 注册表 + 优雅降级：
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import math
 import os
@@ -323,12 +324,21 @@ class OllamaProvider:
         return (r.get("embeddings") or [None])[0]
 
 
+def _accepts_timeout(fn) -> bool:
+    """该 chat 实现是否支持 timeout 参数（heuristic 不需要，网关类需要）。"""
+    try:
+        return "timeout" in inspect.signature(fn).parameters
+    except Exception:
+        return False
+
+
 class AIGateway:
     def __init__(self, config):
         self.cfg = config
         self._providers: Dict[str, Any] = {"heuristic": HeuristicProvider()}
         self._register_extra()
         self._emb_cache: Tuple[float, Optional[str], Optional[str]] = (0.0, None, None)  # (ts, provider, model)
+        self._llm_error = ""  # 最近一次意图解析失败原因（给前端展示，正常时为空）
 
     def _register_extra(self):
         # 注册可选 LLM provider（BYOK，可切换）。heuristic 永远在并兜底。
@@ -376,21 +386,30 @@ class AIGateway:
         """纯规则解析（毫秒级、永不失败）。"""
         return self._heuristic(text)
 
+    def llm_error(self) -> str:
+        """最近一次 LLM 意图解析失败的原因（正常返回空）。"""
+        return self._llm_error
+
     def llm_parse(self, text: str, timeout: int = 60) -> Optional[Dict[str, Any]]:
         """只走 LLM 的意图解析（注入当天日期，便于解析"明天/下周"）；不可用/失败返回 None。
         免费网关（如 Kilo）单次实测 20s 上下，故给足超时——调用方一般在后台线程里用。"""
         if not self.llm_ready():
+            self._llm_error = "未配置可用的 AI（设置 → AI 网关）"
             return None
         name = self._active_name()
         prov = self._providers.get(name)
         if prov is None:
+            self._llm_error = f"AI 通道 {name} 不可用"
             return None
         try:
             prompt = f"今天是 {tu.today().isoformat()}（Asia/Shanghai）。\n{text}"
             r = prov.parse(prompt, timeout=timeout)
             if r and r.get("type"):
+                self._llm_error = ""
                 return r
+            self._llm_error = f"{name}：AI 没有返回可解析的意图（也许再试一次就好了）"
         except Exception as e:
+            self._llm_error = f"{name}：{type(e).__name__}: {e}"
             print(f"[ai] {name} 意图解析失败：{type(e).__name__}: {e}")
         return None
 
@@ -461,16 +480,29 @@ class AIGateway:
         self._emb_cache = (now, provider, model)
         return provider, model, vec
 
-    def chat(self, system: str, messages: List[Dict[str, str]]) -> Optional[str]:
+    def chat(self, system: str, messages: List[Dict[str, str]], timeout: Optional[int] = None) -> Optional[str]:
+        """通用 chat。失败时把原因记到 _llm_error（前端/复盘消费），绝不静默吞掉。"""
         prov = self._providers.get(self._active_name())
         if prov is None:
+            self._llm_error = "AI 通道不可用"
             return None
         try:
-            if prov.available():
-                return prov.chat(system, messages)
-        except Exception:
+            if not prov.available():
+                self._llm_error = f"{self._active_name()}：AI 未就绪（检查设置里的 base_url / api_key）"
+                return None
+            if timeout and _accepts_timeout(prov.chat):
+                out = prov.chat(system, messages, timeout=timeout)
+            else:
+                out = prov.chat(system, messages)
+            if not out:
+                self._llm_error = self._llm_error or f"{self._active_name()}：AI 没有返回内容（可再试一次）"
+            else:
+                self._llm_error = ""
+            return out or None
+        except Exception as e:
+            self._llm_error = f"{self._active_name()}：{type(e).__name__}: {e}"
+            print(f"[ai] {self._active_name()} 调用失败：{type(e).__name__}: {e}")
             return None
-        return None
 
     def status(self) -> Dict[str, Any]:
         return {

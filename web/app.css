@@ -266,6 +266,9 @@ html[data-theme="light"] .badge.reference{color:#a16207}
 .hero .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
 .hero .stat{background:rgba(0,0,0,.18);border-radius:10px;padding:8px 4px;text-align:center}
 html[data-theme="light"] .hero .stat{background:rgba(255,255,255,.66)}
+.hero .stat[role="button"]{cursor:pointer;border:1px solid transparent;transition:border-color .15s;transform:scale(1)}
+.hero .stat[role="button"]:hover{border-color:var(--accent)}
+.hero .stat[role="button"]:active{transform:scale(.97)}
 .hero .stat b{display:block;font-size:19px;line-height:1.2}
 .hero .stat span{font-size:11px;color:var(--muted)}
 .hero .stat.alert b{color:var(--bad)}
@@ -292,6 +295,10 @@ html[data-theme="light"] .hero .stat{background:rgba(255,255,255,.66)}
 .kstat > div{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 6px;text-align:center}
 .kstat b{display:block;font-size:21px;line-height:1.25}
 .kstat span{font-size:11px;color:var(--muted)}
+.kstat div[role="button"]{cursor:pointer;transition:border-color .15s}
+.kstat div[role="button"]:hover{border-color:var(--accent)}
+.kstat div[role="button"]:active{background:var(--active,rgba(0,0,0,.06))}
+.kstat div.late b{color:var(--bad)}
 .summary{white-space:pre-wrap;background:var(--panel2);border:1px solid var(--border);
   border-radius:var(--r-sm);padding:13px;margin-top:10px;font-size:14px;line-height:1.65}
 .answer{white-space:pre-wrap;background:var(--panel2);border:1px solid var(--border);

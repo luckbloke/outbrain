@@ -52,6 +52,8 @@ python server.py --selftest          # 更详细的端到端打印
 | 响应式 | 内容铺满窗口宽度（左右留白 12–36px 随宽度自适应）：≤720px 底部 tabbar + 单列；再宽则今日分区 / 捕获页 / 数据页按可用宽度自动分栏（1→2→3→4… 列） |
 | 主题 | 深 / 浅两套，跟随系统或手动切换（记在 `localStorage`） |
 | 页面 | 今日 / 捕获 / 问答 / 搜索 / 提醒 / 回顾 / 图谱 / 建议 / 数据（手机底栏：今日 / 捕获 / 问答 / 复盘 / 更多） |
+| 今日 | 顶部的四个大数字（逾期 / 今天 / 7 天内 / 今日新增）**都可以点开**，直接看这一类的条目清单 |
+| 复盘 | 数字（新增 / 完成 / 逾期 / 今日到期 / 未结）同样**可以点开**看清单；「AI 润色」失败会写明原因并可重试，绝不把模板总结冒充 AI 结果（✨ 徽章只标记真润色） |
 | 捕获 | 文本框、📎 文件、🎤 语音；记下即出结果，AI 细分意图在后台跑完再刷新卡片（见「异步意图解析」） |
 | 语音 | 录完自动转写：可接任意 OpenAI 兼容 ASR 接口，也可用本机 whisper / vosk；没配就只存音频并标记「待转写」 |
 | 提醒送达 | 应用内横幅 + **提示音**（WebAudio 合成，零素材、离线可用），浏览器/桌面还会发**系统通知**；通知面板里可分别开关 |
@@ -74,14 +76,28 @@ POST /api/capture
   ② 后台线程调 LLM 重解析意图（标题/摘要/标签/人物/项目/动作/时间）
        · 成功 → 覆盖条目字段 + emit item.updated
        · 前端轮询条目，卡片从「AI 解析中…」变为「AI 解析」并 toast 提示
-       · 超时/断网/未配置 → 静默保留规则结果，不报错、不丢数据
+       · 超时/断网/未配置 → 保留规则结果，回执停止转圈，给出「重试 AI」按钮
 ```
 
 - `capture.provider = "auto"`（默认）= LLM 优先、失败回退规则；`"heuristic"` = 纯规则离线。
+- 等待不会无限转圈：`GET /api/items/{id}` 带 `refining` 实时状态，后台线程一结束前端就收尾；
+  失败原因写进 `meta.refine = {state, error}`，回执显示 + 「重试 AI」走 `POST /api/items/{id}/reparse`。
 - 解析来源在条目上落库为 `parse_provider`（`heuristic` / `openai` / `ollama`），详情页会显示。
 - 后台线程会显式带上发起请求的用户，多用户下不会串数据。
 - 环境变量 `OPENAI_API_KEY` **只在 `base_url` 指向官方 `https://api.openai.com` 时**才注入，
   避免误发给第三方网关导致 401（第三方网关用自己的 `api_key`）。
+
+### HTTPS 证书（Android 必读）
+
+APK 里的 Python 只有 OpenSSL、**没有系统 CA 库**，直接访问 https 会报
+`CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate`（Windows 上正常，手机上一律失败）。
+所以仓库自带一份 Mozilla CA 包 `certs/cacert.pem`，`brain/tls.py` 把它接给所有出站 HTTPS
+（AI 解析 / AI 润色 / 远程 ASR）：
+
+- 仍然**完整校验证书**，没有用「不校验」绕过——API Key 走的就是这条链路；
+- 想换 CA（比如内网自签网关）时设置环境变量 `CORDIS_CA_BUNDLE=/path/to/ca.pem` 即可；
+- 打包脚本会把 `certs/` 一起放进 APK，并额外生成 `brain/ca_data.py`（zlib+base64 内嵌同一份 CA）做兜底，
+  即使数据文件被 p4a 过滤掉也能校验证书；删掉 `certs/` 手机端 AI 会全部失败。
 
 ---
 
@@ -373,7 +389,9 @@ brain/
   sync.py          备份/恢复/JSON 迁移（保真导入导出）
   io.py            文件/语音解析（PDF/DOCX/HTML + ASR：远程兼容接口/whisper/vosk）
   http.py          REST API + 静态服务
+  tls.py           出站 HTTPS 的 CA 信任链（Android 没有系统 CA，随包 certs/cacert.pem）
   util.py          工具
+certs/cacert.pem   Mozilla CA 包（随 APK 打包，保证手机能校验证书）
 web/
   index.html       单页前端骨架（今日/捕获/问答/搜索/提醒/回顾/图谱/建议/数据）
   app.css          样式：深浅主题、响应式布局、按钮悬停态

@@ -42,11 +42,19 @@ class ReviewService(Service):
         data: Dict[str, Any] = {
             "kind": "daily", "date": date, "added": added, "completed": completed,
             "overdue": overdue, "due_today": due_today, "suggested_next": upcoming,
+            "open": open_items,
             "counts": {"added": len(added), "completed": len(completed), "overdue": len(overdue),
                        "due_today": len(due_today), "open": len(open_items)},
         }
         template = self._template_daily(data)
-        data["summary"] = self._polish(template) if polish else template
+        if polish:
+            summary, polished, err = self._polish(template)
+            data["summary"] = summary
+            data["polished"] = polished
+            if err:
+                data["polish_error"] = err
+        else:
+            data["summary"] = template
         if save:
             db.upsert_review("daily", date, data)
         return data
@@ -64,12 +72,19 @@ class ReviewService(Service):
         overdue = [i for i in open_items if i.get("due_at") and (tu.from_iso(i["due_at"]) or d).date() < d]
         data: Dict[str, Any] = {
             "kind": "weekly", "week": f"{start_iso} ~ {date}", "added": added,
-            "completed": completed, "overdue": overdue,
+            "completed": completed, "overdue": overdue, "open": open_items,
             "counts": {"added": len(added), "completed": len(completed),
                        "overdue": len(overdue), "open": len(open_items)},
         }
         template = self._template_weekly(data)
-        data["summary"] = self._polish(template) if polish else template
+        if polish:
+            summary, polished, err = self._polish(template)
+            data["summary"] = summary
+            data["polished"] = polished
+            if err:
+                data["polish_error"] = err
+        else:
+            data["summary"] = template
         if save:
             db.upsert_review("weekly", date, data)
         return data
@@ -81,11 +96,18 @@ class ReviewService(Service):
     def list(self, kind: str = None, limit: int = 30):
         return self.ctx.db.list_reviews(kind, limit)
 
-    def _polish(self, base_text: str) -> str:
-        llm = self.ctx.ai.chat(
-            "你是个人助理，用简洁中文帮我复盘，分点列出：完成、遗漏、下一步。不要编造资料里没有的内容。",
-            [{"role": "user", "content": base_text}])
-        return llm if llm else base_text
+    def _polish(self, base_text: str):
+        """AI 润色。返回 (文本, 是否真的用了 AI, 失败原因)——失败时保留模板并说明，
+        绝不把模板冒充成 AI 结果（这正是「润色没效果」被掩盖的原因）。"""
+        try:
+            llm = self.ctx.ai.chat(
+                "你是个人助理，用简洁中文帮我复盘，分点列出：完成、遗漏、下一步。不要编造资料里没有的内容。",
+                [{"role": "user", "content": base_text}], timeout=90)
+        except Exception as e:
+            return base_text, False, f"AI 调用失败：{type(e).__name__}: {e}"
+        if not llm:
+            return base_text, False, (self.ctx.ai.llm_error() or "AI 没有返回结果（可再试一次）")
+        return llm, True, ""
 
     def _template_daily(self, d: Dict[str, Any]) -> str:
         c = d["counts"]

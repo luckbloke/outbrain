@@ -427,11 +427,45 @@ function renderTodayHero(v) {
   else headline = `未来 7 天有 ${within7} 项安排`;
 
   $('headline').textContent = headline;
+  const stat = (n, label, key, cls) =>
+    `<div class="stat ${cls || ''}" role="button" tabindex="0" style="cursor:pointer"
+        onclick="openStatSheet('${key}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStatSheet('${key}')}">
+       <b>${n}</b><span>${label}</span></div>`;
   $('todayStats').innerHTML = `
-    <div class="stat ${overdue ? 'alert' : ''}"><b>${overdue}</b><span>逾期</span></div>
-    <div class="stat"><b>${today}</b><span>今天</span></div>
-    <div class="stat"><b>${within7}</b><span>7 天内</span></div>
-    <div class="stat ok"><b>${(v.added_today || []).length}</b><span>今日新增</span></div>`;
+    ${stat(overdue, '逾期', 'overdue', overdue ? 'alert' : '')}
+    ${stat(today, '今天', 'due_today')}
+    ${stat(within7, '7 天内', 'within7')}
+    ${stat((v.added_today || []).length, '今日新增', 'added_today', 'ok')}`;
+}
+
+/* 通用「点数字 → 看清单」抽屉：字段缺失（没拉到数据）时才重取 */
+async function openListSheet(title, list) {
+  list = list || [];
+  const body = list.length
+    ? `<div class="card" style="padding:4px 15px">${list.map((i) => itemCard(i)).join('')}</div>`
+    : emptyBox('✅', '这一类现在没有条目');
+  openSheet(`${title} · ${list.length}`, body, '');
+}
+
+/* 点首页的大数字，直接看这一类条目（数据来自 /api/today，现取现显） */
+const STAT_SHEETS = {
+  overdue: { title: '已逾期', build: (v) => v.overdue },
+  due_today: { title: '今天到期', build: (v) => v.due_today },
+  within7: { title: '未来 7 天（含今天）', build: (v) => [].concat(v.due_today || [], v.upcoming || []) },
+  added_today: { title: '今日新增', build: (v) => v.added_today },
+  waiting: { title: '等待中', build: (v) => v.waiting },
+};
+
+async function openStatSheet(key) {
+  const m = STAT_SHEETS[key];
+  if (!m) return;
+  try {
+    const v = await api('/api/today');
+    lastToday = v;
+    openListSheet(m.title, m.build(v));
+  } catch (e) {
+    toast(e.message, 'bad', 3200);
+  }
 }
 
 function renderTodayList(v) {
@@ -446,22 +480,36 @@ function renderTodayList(v) {
 }
 
 /* 解析来源文案 + 后台 AI 解析轮询
-   捕获采用「规则先出结果 → LLM 后台重解析」：提交瞬间返回，AI 完成后再刷新卡片。 */
+   捕获采用「规则先出结果 → LLM 后台重解析」：提交瞬间返回，AI 完成后再刷新卡片。
+   AI 太慢 / 失败 / 网关不可用都不能让回执一直转圈——以此停止：条目有了 AI 解析、
+   meta.refine.state=failed（后端会写）、或轮询到 refining=false / 上限 2 分钟。 */
 const PROV_LABEL = { openai: 'AI 解析', ollama: 'AI 解析（本地）', heuristic: '规则解析' };
 function provLabel(p) { return PROV_LABEL[p] || p || '规则解析'; }
 
-function watchRefine(id, onDone) {
+function refineFailed(it) {
+  const m = it && it.meta;
+  return !!(m && m.refine && m.refine.state === 'failed');
+}
+
+function watchRefine(id, onDone, onFail, onGiveUp) {
   let n = 0;
   const tick = async () => {
     n += 1;
     try {
       const r = await api('/api/items/' + id);
       const it = (r && r.item) || r;
-      if (it && it.parse_provider && it.parse_provider !== 'heuristic') { onDone(it); return; }
+      const ai = it && it.parse_provider && it.parse_provider !== 'heuristic';
+      if (ai) { onDone(it); return; }
+      if (refineFailed(it)) { onFail ? onFail(it) : onDone(it); return; }
+      if (it && it.refining === false && n > 2) {
+        // 上一轮解析已收尾但没有 AI 结果（如条目在解析中被完成）
+        if (onFail) onFail(it); return;
+      }
     } catch (e) {
       if (/not found|404/i.test(e.message || '')) return;  // 条目被删，停止轮询
     }
     if (n < 40) setTimeout(tick, 3000);
+    else if (onGiveUp) onGiveUp();
   };
   setTimeout(tick, 2500);
 }
@@ -483,7 +531,7 @@ async function quickCapture() {
     };
     tell(it);
     renderToday();
-    if (r.refining) watchRefine(it.id, (x) => { tell(x); renderToday(); });
+    if (r.refining) watchRefine(it.id, (x) => { tell(x); renderToday(); }, () => {});
   } catch (e) {
     toast(e.message, 'bad', 3200);
   }
@@ -506,8 +554,15 @@ async function renderCapture() {
   }
 }
 
-function showCapResult(it, refining) {
+function showCapResult(it, refining, refFail) {
   $('capResult').dataset.itemId = String(it.id);
+  const refMeta = (it.meta && it.meta.refine) || {};
+  const line = refining
+    ? '<span class="spinner"></span> AI 解析中…（结果会自动刷新）'
+    : (refFail || refineFailed(it)
+      ? `规则解析 · AI 暂未完成${refMeta.error ? `<span class="faint">（${esc(String(refMeta.error).slice(0, 80))}）</span>` : ''}
+         <button class="btn ghost sm" style="margin-left:8px" onclick="reparseCap(${it.id})">重试 AI</button>`
+      : esc(provLabel(it.parse_provider)));
   $('capResult').innerHTML = `
     <div class="card" style="margin:14px 0 0;background:var(--panel2)">
       <div class="row" style="gap:8px">
@@ -519,12 +574,34 @@ function showCapResult(it, refining) {
       </div>
       <div style="font-weight:650;margin-top:8px">${esc(it.title)}</div>
       <div class="faint" style="margin-top:6px">
-        置信度 ${(it.confidence || 0).toFixed(2)} · ${refining ? '<span class="spinner"></span> AI 解析中…' : esc(provLabel(it.parse_provider))}
+        置信度 ${(it.confidence || 0).toFixed(2)} · ${line}
         ${(it.tags || []).length ? ' · ' + (it.tags || []).map(esc).join(' / ') : ''}
       </div>
       ${(it.meta && it.meta.auto_project && it.project_name) ? `
         <div class="faint" style="margin-top:4px">📁 自动关联「${esc(it.project_name)}」 · ${esc(it.meta.auto_project.reason || '')}</div>` : ''}
     </div>`;
+}
+
+async function reparseCap(id) {
+  try {
+    const r = await api('/api/items/' + id + '/reparse', { method: 'POST', body: jsonBody({}) });
+    const it = (r && r.item) || r;
+    showCapResult(it, true);
+    renderCapture();
+    renderToday();
+    watchRefine(id, (x) => {
+      showCapResult(x, false);
+      toast('AI 已解析意图', 'ok');
+      renderCapture();
+      renderToday();
+    }, (x) => {
+      showCapResult(x, false, true);
+      renderCapture();
+      renderToday();
+    }, () => showCapResult(it, false, true));
+  } catch (e) {
+    toast(e.message, 'bad', 3200);
+  }
 }
 
 async function doCapture() {
@@ -542,12 +619,13 @@ async function doCapture() {
     renderCapture();
     renderToday();
     if (r.refining) {
+      const noteFail = (x) => { showCapResult(x, false, true); renderCapture(); renderToday(); };
       watchRefine(it.id, (x) => {
         showCapResult(x, false);
         toast('AI 已解析意图', 'ok');
         renderCapture();
         renderToday();
-      });
+      }, noteFail, () => noteFail(it));
     }
   } catch (e) {
     toast(e.message, 'bad', 3200);
@@ -798,6 +876,7 @@ async function doAsk() {
 
 /* ------------------------------- 复盘 ------------------------------- */
 let reviewKind = 'daily';
+let lastReview = null;
 
 async function renderReview() {
   if (!$('reviewDate').value) {
@@ -808,17 +887,38 @@ async function renderReview() {
 }
 
 function renderReviewData(r, kind) {
+  lastReview = r;
   const c = r.counts || {};
-  const stat = (k, v, cls) => `<div><b class="${cls || ''}">${v != null ? v : '—'}</b><span>${k}</span></div>`;
+  const when = kind === 'daily' ? '这一天' : '这一周';
+  const stat = (k, v, cls, key, hint) =>
+    `<div class="${cls || ''}" role="button" tabindex="0" title="${esc(hint || '点开看清单')}" style="cursor:pointer"
+        onclick="openReviewSheet('${key}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openReviewSheet('${key}')}">
+       <b>${v != null ? v : '—'}</b><span>${k}</span></div>`;
   $('reviewOut').innerHTML = `
     <div class="kstat">
-      ${stat('新增', c.added)}
-      ${stat('完成', c.completed, '')}
-      ${stat('逾期', c.overdue, c.overdue ? 'late' : '')}
-      ${kind === 'daily' ? stat('今日到期', c.due_today) : ''}
-      ${stat('未结', c.open)}
+      ${stat('新增', c.added, '', 'added', '点开看' + when + '记下的条目')}
+      ${stat('完成', c.completed, '', 'completed', '点开看完成的条目')}
+      ${stat('逾期', c.overdue, c.overdue ? 'late' : '', 'overdue', '点开看仍逾期的条目')}
+      ${kind === 'daily' ? stat('今日到期', c.due_today, '', 'due_today', '点开看今天到期的条目') : ''}
+      ${stat('未结', c.open, '', 'open', '点开看还没做完的条目')}
     </div>
-    <div class="summary">${esc(r.summary || '（暂无内容）')}</div>`;
+    ${r.polish_error ? `<div class="faint" style="font-size:12px;margin-bottom:8px">AI 润色未完成：${esc(r.polish_error)}</div>` : ''}
+    <div class="summary">${esc(r.summary || '（暂无内容）')}${r.polished ? `<span style="margin-left:10px;font-size:11px;color:var(--accent)">✨ AI 润色</span>` : ''}</div>`;
+}
+
+/* 复盘页的数字也能点开：直接用刚拿到的数据切清单 */
+const REV_SHEETS = {
+  added: { title: '新增', build: (r) => r.added },
+  completed: { title: '完成', build: (r) => r.completed },
+  overdue: { title: '逾期', build: (r) => r.overdue },
+  due_today: { title: '今日到期', build: (r) => r.due_today },
+  open: { title: '未结', build: (r) => r.open },
+};
+
+function openReviewSheet(key) {
+  const m = REV_SHEETS[key];
+  if (!m || !lastReview) return;
+  openListSheet(m.title, m.build(lastReview) || []);
 }
 
 async function doReview(kind) {
@@ -837,14 +937,16 @@ async function doReviewAI() {
   const btn = $('reviewPolishBtn');
   const old = btn.textContent;
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> 润色中';
+  btn.innerHTML = '<span class="spinner"></span> AI 润色中…（约 30 秒）';
   try {
     const date = $('reviewDate').value;
     const r = await api('/api/reviews/' + reviewKind + (date ? '?date=' + encodeURIComponent(date) : ''), { method: 'POST' });
     renderReviewData(r, reviewKind);
-    toast('已用 AI 润色', 'ok');
+    if (r.polished) toast('已用 AI 润色', 'ok');
+    else toast('AI 暂未完成：' + (r.polish_error || '网关没返回'), 'bad', 5000);
   } catch (e) {
     toast(e.message, 'bad', 3200);
+    renderReview();
   }
   btn.disabled = false;
   btn.textContent = old;

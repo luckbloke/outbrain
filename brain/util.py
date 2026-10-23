@@ -84,7 +84,8 @@ def http_json(
     if payload is not None:
         data = json_dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, method=method.upper(), headers=hdrs)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    from . import tls
+    with tls.urlopen(req, timeout=timeout) as resp:
         body = resp.read().decode("utf-8", "replace")
     if not body:
         return None
@@ -98,7 +99,8 @@ def http_get(url: str, headers: Optional[Dict[str, str]] = None, timeout: float 
     """轻量连通性探测，返回 HTTP 状态码（失败返回 -1）。"""
     try:
         req = urllib.request.Request(url, method="GET", headers=headers or {})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        from . import tls
+        with tls.urlopen(req, timeout=timeout) as resp:
             resp.read()
             return resp.getcode()
     except urllib.error.HTTPError as e:

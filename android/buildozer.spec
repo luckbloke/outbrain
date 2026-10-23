@@ -23,7 +23,8 @@ package.name = cordisbrain
 package.domain = org.cordis
 
 source.dir = app
-source.include_exts = py,html,htm,css,js,json,toml,txt,md,png,jpg,ico
+# pem/crt：随包 CA（certs/cacert.pem），少了它手机端 HTTPS 一律证书校验失败
+source.include_exts = py,html,htm,css,js,json,toml,txt,md,png,jpg,ico,pem,crt
 source.exclude_dirs = __pycache__,.git,data,build,dist
 
 version = 0.1.0

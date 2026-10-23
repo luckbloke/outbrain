@@ -34,6 +34,9 @@ desktop.ini
 Python-*.tar.xz
 Python-*.tgz
 
+# ---- Android 构建时生成的兜底 CA（源文件是 certs/cacert.pem）----
+brain/ca_data.py
+
 # ---- Android 构建产物（源码与配置仍入库）----
 android/dist/
 android/bin/

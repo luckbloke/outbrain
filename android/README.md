@@ -20,6 +20,12 @@
 | `build_apk.ps1` | **Windows 一键构建**（自动启动 Docker、拉镜像、挂持久化卷、跑上面的脚本）。 |
 | `dist/` | 构建产物（`*.apk`），构建后生成。 |
 
+> `certs/cacert.pem`（项目根目录）也会打进 APK：Android 里的 Python 有 OpenSSL 但**没有系统 CA 库**，
+> 少了这份 Mozilla CA，所有出站 HTTPS（AI 解析 / AI 润色 / 远程 ASR）都会报
+> `CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate`。
+> `build_android.sh` 还会把同一份 CA 生成 `brain/ca_data.py`（zlib+base64）作为兜底——
+> 即使数据文件被 p4a 过滤掉，证书也能从编译后的 Python 里取到。
+
 > 项目根目录（`brain/`、`cordis/`、`web/`、`server.py` …）**不会被改动**。
 > `build_android.sh` 只在构建时把源码**临时拼装**到工作区的 `app/` 目录作为 `source.dir`，
 > 因此仓库里不会多出一份重复的源码副本。

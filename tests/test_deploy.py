@@ -192,6 +192,9 @@ def main():
         check("capture.empty.400", lambda: _a(code == 400, f"code={code} d={d}"))
         check("capture.item_shape", lambda: _a(all(k in it_meet for k in ITEM_FIELDS),
                                                f"missing={[k for k in ITEM_FIELDS if k not in it_meet]}"))
+        # 条目接口带解析状态（前端停止「AI 解析中…」用的）
+        code, d = req("GET", "/api/items/%d" % it_meet["id"])
+        check("capture.item.refining_flag", lambda: _a(code == 200 and isinstance((d or {}).get("refining"), bool), d))
 
         # 3. items CRUD
         code, d = req("GET", "/api/items")
@@ -386,6 +389,12 @@ def main():
         code, d = req("PUT", "/api/settings", {"search.semantic": "off"})
         check("settings.put.bob.403", lambda: _a(code == 403, f"code={code} d={d}"))
         TOKEN["v"] = save_tok  # 切回 alice
+
+        # 8. 随包 CA（Android 的 Python 没有系统 CA 库，urllib 必须用自己的证书包）
+        from brain import tls
+        check("tls.ca_bundle", lambda: _a(os.path.isfile(tls.ca_bundle()), f"bundle={tls.ca_bundle()}"))
+        check("tls.context", lambda: _a(len(tls.context().get_ca_certs()) > 50,
+                                        f"ca={len(tls.context().get_ca_certs())}"))
 
         # 8. 前端静态 + 契约
         code, t = req("GET", "/")

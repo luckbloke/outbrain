@@ -211,12 +211,26 @@ def test_asr_habits():
         after = db.get_item(iid)
         assert after["project_id"] == pid_a, after.get("project_id")
         assert (after.get("meta") or {}).get("auto_project", {}).get("source") == "habit_tag", after.get("meta")
+        assert (after.get("meta") or {}).get("refine", {}).get("state") == "done", after.get("meta")
         # 重解析明确换了项目 → 旧痕迹作废，不误导人
         ctx.capture._apply(iid, {"type": "note", "title": before["title"], "project": "杂项",
                                  "tags": [], "confidence": 0.7}, "openai", before["raw"], split=False)
         after2 = db.get_item(iid)
         assert after2["project_id"] == pid_b, after2.get("project_id")
         assert "auto_project" not in (after2.get("meta") or {}), after2.get("meta")
+        # AI 网关没返回 → 落 failed 标记（前端停止转圈、显示原因与重试）
+        ctx.capture._apply(iid, {"type": "note", "title": before["title"], "tags": [],
+                                 "confidence": 0.6}, "heuristic", before["raw"], split=False)
+        assert db.get_item(iid)["meta"]["refine"]["state"] == "pending", db.get_item(iid)["meta"]
+        ctx.ai.llm_parse = lambda *a, **k: None
+        ctx.ai.gw._llm_error = "AI 没有返回可解析的意图"
+        ctx.capture._refine(iid, 0, before["raw"])
+        meta3 = db.get_item(iid)["meta"]
+        assert (meta3.get("refine") or {}).get("state") == "failed", meta3
+        assert (meta3.get("refine") or {}).get("error") == "AI 没有返回可解析的意图", meta3
+        # 删除该条目后 _mark_refine / _refine 不许炸
+        db.delete_item(iid)
+        ctx.capture._refine(iid, 0, before["raw"])
 
         # ---------- 建议排序加权 ----------
         now2 = tu.now()

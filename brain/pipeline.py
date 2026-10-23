@@ -127,6 +127,9 @@ class CaptureService(Service):
             "people": parsed.get("people", []),
             "projects": parsed.get("projects", []),
             "context": parsed.get("context", ""),
+            # 解析状态：前端据此停止「AI 解析中…」的等待 / 显示重试
+            "refine": {"state": "done" if provider != "heuristic" else "pending",
+                       "provider": provider},
         }
         # 后台 LLM 重解析会整体覆盖 meta，但「习惯自动关联」的痕迹要留着——
         # 前提是项目归属没被重解析改掉（改掉了就说明痕迹已过期）
@@ -197,6 +200,13 @@ class CaptureService(Service):
             set_current_user_id(uid)
             llm = self.ctx.ai.llm_parse(text)
             if not llm:
+                # 网关太慢/失败/没返回：明确落一个 failed 标记并广播，
+                # 否则前端会一直显示「AI 解析中…」。规则解析的结果本身不受影响。
+                self._mark_refine(item_id, "failed",
+                                  self.ctx.ai.llm_error() or "AI 网关未返回结果（可稍后重试）")
+                item = self.ctx.db.get_item(item_id)
+                if item:
+                    self.ctx.emit("item.updated", item)
                 return
             cur = self.ctx.db.get_item(item_id)
             if not cur or cur.get("status") in ("done", "canceled"):
@@ -207,10 +217,33 @@ class CaptureService(Service):
             self.ctx.emit("item.updated", item)
         except Exception as e:
             print(f"[ai] 后台意图解析失败：{type(e).__name__}: {e}")
+            self._mark_refine(item_id, "failed", f"{type(e).__name__}: {e}")
+            try:
+                item = self.ctx.db.get_item(item_id)
+                if item:
+                    self.ctx.emit("item.updated", item)
+            except Exception:
+                pass
         finally:
             set_current_user_id(prev)
             with self._refine_lock:
                 self._refining.discard(item_id)
+
+    def _mark_refine(self, item_id: int, state: str, error: str = "") -> None:
+        """把解析状态写进 meta.refine（失败时带原因），供前端停止等待并给出重试。"""
+        try:
+            cur = self.ctx.db.get_item(item_id)
+            if not cur:
+                return
+            old = cur.get("meta") if isinstance(cur.get("meta"), dict) else {}
+            meta = dict(old or {})
+            mark = {"state": state}
+            if error:
+                mark["error"] = str(error)[:200]
+            meta["refine"] = mark
+            self.ctx.db.update_item(item_id, {"meta": meta})
+        except Exception as e:
+            print(f"[ai] 标记解析状态失败：{e}")
 
     def _resolve_project(self, parsed: Dict[str, Any], text: str) -> Optional[int]:
         db = self.ctx.db

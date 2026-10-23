@@ -56,6 +56,8 @@ The frontend is plain vanilla JS — a **zero-build** SPA (`web/index.html` + `w
 | Responsive | Content fills the window width (12–36px side padding scales with width): ≤720px gets a bottom tabbar and a single column; wider screens auto-split Today / Capture / Data into 1→2→3→4… columns |
 | Theming | Dark and light, follow the system or switch manually (stored in `localStorage`) |
 | Views | Today / Capture / Ask / Search / Reminders / Reviews / Graph / Suggestions / Data (mobile tabbar: Today / Capture / Ask / Review / More) |
+| Today | The four big numbers at the top (overdue / today / within 7 days / added today) are **clickable** and open the matching item list |
+| Reviews | The numbers (added / completed / overdue / due today / open) are **clickable** too; a failed "AI polish" says why and can be retried, and the ✨ badge marks only genuinely polished text |
 | Capture | Text box, 📎 file, 🎤 voice; the note appears instantly and the AI refinement updates the card in the background (see "Async intent parsing") |
 | Voice | Recordings are transcribed automatically: any OpenAI-compatible ASR endpoint, or local whisper / vosk; with none configured the audio is kept and flagged "to transcribe" |
 | Reminder delivery | In-app banner + **sound** (WebAudio-synthesised, no assets, works offline), plus **system notifications** in browsers/desktop; each can be toggled in the notification panel |
@@ -79,14 +81,29 @@ POST /api/capture
   2. A background thread asks the LLM to refine the intent (title/summary/tags/people/projects/actions/time)
        - success -> item fields are overwritten and item.updated is emitted
        - the frontend polls the item; the card goes from "AI parsing..." to "AI parsed" with a toast
-       - timeout / offline / not configured -> rule result is silently kept, nothing breaks, nothing is lost
+       - timeout / offline / not configured -> the rule result is kept, the card stops spinning and shows a "Retry AI" button
 ```
 
 - `capture.provider = "auto"` (default) = LLM first, fall back to rules; `"heuristic"` = rules only, fully offline.
+- The wait never spins forever: `GET /api/items/{id}` carries the live `refining` flag, so the frontend finalises
+  as soon as the background thread ends. The failure reason is stored in `meta.refine = {state, error}` and the
+  retry button goes through `POST /api/items/{id}/reparse`.
 - The parse source is stored on the item as `parse_provider` (`heuristic` / `openai` / `ollama`) and shown in the detail sheet.
 - The background thread carries the requesting user explicitly, so multi-user data never mixes.
 - The `OPENAI_API_KEY` environment variable is injected **only when `base_url` points at the official
   `https://api.openai.com`**, so it is never leaked to third-party gateways (use their own `api_key`).
+
+### HTTPS certificates (Android must read)
+
+The Python inside the APK ships OpenSSL but **no system CA store**, so any https call fails with
+`CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate` (fine on Windows, always broken on the phone).
+The repo therefore vendors the Mozilla CA bundle `certs/cacert.pem`, and `brain/tls.py` wires it into every
+outbound HTTPS request (AI parsing / AI polish / remote ASR):
+
+- certificates are still **fully verified**; there is no "skip verification" shortcut, because the API key travels this link;
+- to use another CA (an internal self-signed gateway, say), set `CORDIS_CA_BUNDLE=/path/to/ca.pem`;
+- the packaging script copies `certs/` into the APK and also generates `brain/ca_data.py` (the same bundle, zlib+base64)
+  as a fallback, so verification still works even if p4a filters data files; delete `certs/` and all AI features fail on mobile.
 
 ---
 
@@ -399,7 +416,9 @@ brain/
   sync.py          backup / restore / JSON migration (high-fidelity import & export)
   io.py            file & voice parsing (PDF/DOCX/HTML + ASR: compatible endpoint / whisper / vosk)
   http.py          REST API + static file serving
+  tls.py           CA trust for outbound HTTPS (Android has no system CA; bundle in certs/)
   util.py          utilities
+certs/cacert.pem   Mozilla CA bundle (shipped inside the APK so phones can verify TLS)
 web/
   index.html       SPA skeleton (today/capture/ask/search/reminders/reviews/graph/suggestions/data)
   app.css          styles: dark/light themes, responsive layout, button hover states

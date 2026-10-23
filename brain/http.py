@@ -195,7 +195,14 @@ class HttpService(Service):
 
     def h_item(self, p, b, q):
         it = self.ctx.db.get_item(int(p["id"]))
-        return (200, it) if it else (404, {"error": "not found"})
+        if not it:
+            return 404, {"error": "not found"}
+        # 前端轮询「AI 解析中…」用：后台线程结束就置 false，避免网关太慢/失败时一直转圈
+        try:
+            it["refining"] = bool(self.ctx.capture.is_refining(int(p["id"])))
+        except Exception:
+            it["refining"] = False
+        return 200, it
 
     def h_item_patch(self, p, b, q):
         it = self.ctx.db.update_item(int(p["id"]), b)
@@ -224,7 +231,13 @@ class HttpService(Service):
 
     def h_reparse(self, p, b, q):
         it = self.ctx.capture.process(int(p["id"]))
-        return (200, it) if it else (404, {"error": "not found"})
+        if not it:
+            return 404, {"error": "not found"}
+        try:
+            it["refining"] = bool(self.ctx.capture.is_refining(int(p["id"])))
+        except Exception:
+            it["refining"] = False
+        return 200, it
 
     def h_search(self, p, b, q):
         items = self.ctx.search.query(
@@ -282,16 +295,29 @@ class HttpService(Service):
         return 200, {"ok": True}
 
     # ---------- P1: 回顾 ----------
+    def _review_out(self, kind: str, date):
+        """GET 复盘：数字现算（纯 DB、毫秒级），但沿用已保存的 AI 润色总结——
+        不然润色成功后一切页面就变回模板，看起来像「润色没效果」。"""
+        d = (self.ctx.review.daily(date, polish=False, save=False) if kind == "daily"
+             else self.ctx.review.weekly(date, polish=False, save=False))
+        try:
+            saved = self.ctx.review.get(kind, date)
+        except Exception:
+            saved = None
+        if isinstance(saved, dict) and saved.get("polished") and saved.get("summary"):
+            d["summary"] = saved["summary"]
+            d["polished"] = True
+        return d
+
     def h_review_daily(self, p, b, q):
-        # 查看：实时重算计数（未结/完成/逾期，纯 DB、很快）+ 模板总结（不跑 LLM、不覆盖缓存）→ 永远最新
-        return 200, self.ctx.review.daily(q.get("date"), polish=False, save=False)
+        return 200, self._review_out("daily", q.get("date"))
 
     def h_review_daily_gen(self, p, b, q):
         return 200, self.ctx.review.daily(q.get("date"))
 
     def h_review_weekly(self, p, b, q):
-        # 查看：实时重算 + 模板总结（不跑 LLM、不覆盖缓存）
-        return 200, self.ctx.review.weekly(q.get("date"), polish=False, save=False)
+        # 查看：实时重算 + 模板总结（不跑 LLM、不覆盖缓存），沿用已保存的 AI 润色总结
+        return 200, self._review_out("weekly", q.get("date"))
 
     def h_review_weekly_gen(self, p, b, q):
         return 200, self.ctx.review.weekly(q.get("date"))
